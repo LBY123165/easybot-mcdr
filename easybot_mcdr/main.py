@@ -206,6 +206,13 @@ def on_server_started(server: PluginServerInterface):
                 loop.run_until_complete(setup_websocket_and_report(server))
             else:
                 server.logger.error("WebSocket客户端未初始化")
+
+            if wsc:
+        # 由于 on_server_started 是同步线程，需要用 run_coroutine_threadsafe
+                asyncio.run_coroutine_threadsafe(
+                    wsc.data_record("Online", "Server Started", "System"),
+                    asyncio.get_event_loop()
+                )
         finally:
             loop.close()
         
@@ -337,6 +344,10 @@ async def on_unload(server: PluginServerInterface):
     global player_data_map, wsc, server_interface
     
     try:
+        # 在关闭连接前，上报服务器关闭
+        if wsc:
+            await wsc.data_record("Offline", "Server Stopped", "System")
+            
         # 保存玩家数据
         player_data_map = get_data_map()
         
@@ -587,21 +598,23 @@ async def say(source: CommandSource, context: CommandContext):
     await wsc.push_message(name, context["message"], True)
     source.reply("§a消息已发送: §f" + context["message"])
 
-kick_map = []
+kick_map = {}
 
 def push_kick(player: str, reason: str):
+    global kick_map
     if reason is None or reason.strip() == "":
         reason = "你已被踢出服务器"
     server = ServerInterface.get_instance()
+    # 记录当前时间戳，而不是简单的 append
+    kick_map[player] = time.time()
     if not server.is_rcon_running():
         server.logger.error("你的服务器RCON当前并未运行,踢出玩家的原因无法显示多行。")
         server.logger.error(f"即将踢出玩家 {player} 并且只显示踢出原因的第一行!")
         first_line = reason.split("\n")[0]
         server.execute(f"kick {player} {first_line}")
         return
-    global kick_map
     server.rcon_query(f"kick {player} {reason}")
-    kick_map.append(player)
+    kick_map[player] = time.time()
 
 async def toggle_bot_filter(source: CommandSource):
     if not source.has_permission(3):
@@ -678,12 +691,30 @@ async def on_player_joined(server: PluginServerInterface, player: str, info: Inf
             return
         server.logger.info(f"玩家 {player} 已加入并缓存: UUID={player_info['player_uuid']}, IP={player_info['ip']}")
         res = await wsc.login(player)
-        if res["kick"]:
-            server.logger.info(f"检测到玩家 {player} 需要被踢出，延迟5秒执行...")
+        if res["kick"]:            
+            kick_msg = res.get("kick_message", "验证失败")
+            server.logger.info(f"检测到玩家 {player} 需要被踢出，等待加载延迟...")
+            # 记录到字典中，使用时间戳
+            kick_map[player] = time.time()
+            # 1. 标记为踢出，防止触发退出播报
+            if player not in kick_map:
+                kick_map[player] = time.time()
+            
+            # 2. 在踢出前发送聊天栏通知
+            # 使用红色文字 (§c) 醒目提示
+            server.tell(player, f"§c[EasyBot] 验证未通过: {kick_msg}")
+            server.tell(player, "§c[EasyBot] 您将在 5 秒后被移出服务器，请按照提示操作。")
+            
+            # 3. 等待并执行踢出
             await asyncio.sleep(5) 
-            push_kick(player, res["kick_message"])
+            push_kick(player, kick_msg)
             return
+            
+        if player in kick_map:
+            kick_map.pop(player)
+
         await wsc.push_enter(player)
+
     except Exception as e:
         server.logger.error(f"处理玩家 {player} 加入时出错: {e}")
         server.logger.debug("\n{traceback.format_exc()}")
@@ -692,9 +723,12 @@ async def on_player_joined(server: PluginServerInterface, player: str, info: Inf
 async def _report_player_exit(server: PluginServerInterface, name: str):
     # 踢出列表过滤
     if name in kick_map:
-        server.logger.debug(f"玩家 {name} 是被踢出的，退出事件上报已跳过")
-        kick_map.remove(name)
-        return
+        if time.time() - kick_map[name] < 15:
+            server.logger.debug(f"玩家 {name} 是被踢出的，退出事件上报已跳过")
+            return
+        else:
+            # 如果超过15秒残留的标记，清理掉，继续执行
+            kick_map.pop(name, None)
 
     # 假人过滤
     if is_bot_player(name):
@@ -845,9 +879,11 @@ async def on_player_left(server: PluginServerInterface, player: str):
     server.logger.debug(f"处理玩家退出事件: {player}, 假人过滤状态: enabled={bot_filter['enabled']}")
     
     if player in kick_map:
-        server.logger.debug(f"玩家 {player} 是被踢出的，跳过处理")
-        kick_map.remove(player)
-        return
+        if time.time() - kick_map[player] < 15:
+            server.logger.debug(f"玩家 {player} 是被踢出的，跳过处理")
+            return
+        else:
+            kick_map.pop(player, None)
         
     if is_bot_player(player):
         server.logger.info(f"过滤假人 {player} 的退出事件 (匹配前缀: {bot_filter['prefixes']})")
