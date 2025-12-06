@@ -303,12 +303,13 @@ class EasyBotWsClient:
                     "server_description": f"MCDR_{ServerInterface.get_instance().get_server_information().version}",
                 }))
             elif op == 3:
-              self._session_info.set_server_name(
-                  data["server_name"]
-              )
-              server.logger.info(f"[EasyBot] 身份验证成功,已经成功连接到EasyBot。 [{data['server_name']}]")
-                # 启动心跳
-              if self._session_info is not None:
+                self._session_info.set_server_name(data["server_name"])
+                server.logger.info(f"[EasyBot] 身份验证成功... [{data['server_name']}]")
+                
+                # [新增] 连接成功后，立即请求同步配置
+                await self.start_update_sync_settings()
+                
+                if self._session_info is not None:
                     interval = self._session_info.get_interval()
                     await self._start_heartbeat(interval)
             elif op == 4:
@@ -324,7 +325,13 @@ class EasyBotWsClient:
                                 handler(ctx, data, self._session_info)
                         except Exception as e:
                             server.logger.error(f"[EasyBot] 处理 exec_op={exec_op} 时出错: {str(e)}")
-                            
+            
+            elif op == 5:
+                callback_id = data.get("callback_id")
+                if callback_id in self._pending_requests:
+                    future = self._pending_requests.pop(callback_id)
+                    if not future.done():
+                        future.set_result(data)
         except Exception as e:
             try:
                 server = ServerInterface.get_instance()
@@ -443,4 +450,35 @@ class EasyBotWsClient:
             "server_name": server_name,
             "player": player,
             "message": message
+        })
+
+    async def start_update_sync_settings(self):
+        """请求服务端同步配置"""
+        await self._send_packet("NEED_SYNC_SETTING", {})
+
+    async def server_state(self, players_str: str):
+        """上报服务器状态"""
+        await self._send_packet("SERVER_STATE_CHANGED", {
+            "token": get_config()["token"],
+            "players": players_str
+        })
+
+    async def data_record(self, record_type: str, data: str, name: str):
+        """数据埋点上报"""
+        # record_type 对应 Java 枚举: Online, Offline, Chat, Kill, Command 等
+        await self._send_packet("DATA_RECORD", {
+            "type": record_type,
+            "data": data,
+            "name": name,
+            "token": get_config()["token"]
+        })
+
+    async def get_new_version(self):
+        """获取新版本信息"""
+        return await self.send_and_wait("GET_NEW_VERSION", {})
+
+    async def get_bind_info(self, player_name: str):
+        """获取绑定详情"""
+        return await self.send_and_wait("GET_BIND_INFO", {
+            "player_name": player_name
         })

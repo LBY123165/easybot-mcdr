@@ -98,6 +98,14 @@ async def sync_message(ctx: ExecContext, data:dict, _):
                 reply_text = RText("[回复某条消息]")
                 reply_text.set_color(RColor.gray)
                 text_list.append(reply_text)
+
+            # 处理 face 类型
+            elif seg_type == 7:
+                # Java版 FaceSegment: displayName
+                face_name = str(segment.get("display_name", "表情"))
+                face_text = RText(f"[{face_name}]")
+                face_text.set_color(RColor.yellow)
+                text_list.append(face_text)
     append_current_text()
     ServerInterface.get_instance().broadcast(text_list)
 
