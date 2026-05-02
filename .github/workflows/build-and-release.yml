@@ -41,6 +41,7 @@ jobs:
         run: |
           python tests/test_plugin.py > test-report.md 2>&1 || TEST_EXIT=$?
           echo "test_exit=${TEST_EXIT:-0}" >> $GITHUB_OUTPUT
+          cat test-report.md >> $GITHUB_STEP_SUMMARY
           cat test-report.md
 
       - name: 上传测试报告
@@ -105,8 +106,8 @@ jobs:
       - name: 生成 Release 说明
         id: release_body
         run: |
-          # 读取测试报告摘要（前 30 行）
-          SUMMARY=$(head -30 test-report.md 2>/dev/null || echo "测试报告不可用")
+          REPORT=$(cat test-report.md 2>/dev/null || echo "测试报告不可用")
+          cat test-report.md > /tmp/report_content.md
 
           cat <<'BODY_EOF' > release_body.md
           ## EasyBot-MCDR ${{ env.VERSION }}
@@ -116,17 +117,12 @@ jobs:
           - MCDReforged: >= 2.14
           - Python: 3.12.8
 
-          ### 测试报告
 
-          $SUMMARY
-
-          ---
-
-          完整测试报告已作为构建产物上传。
           BODY_EOF
 
-          # 去除 heredoc 缩进
-          sed -i 's/^          //' release_body.md
+          cat /tmp/report_content.md >> release_body.md
+
+
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
