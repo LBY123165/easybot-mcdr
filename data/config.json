@@ -43,5 +43,6 @@
     "bot_filter": {
         "enabled": true,
         "prefixes": ["Bot_", "BOT_", "bot_"]
-    }
+    },
+    "server_handler": "forge"
 }

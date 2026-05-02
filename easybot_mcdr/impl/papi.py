@@ -1,11 +1,12 @@
 import asyncio
 import re
+from typing import List
 from easybot_mcdr.websocket.context import ExecContext
 from easybot_mcdr.websocket.ws import EasyBotWsClient
 from mcdreforged.api.all import *
 
 
-def get_placeholders(text: str) -> list[str]:
+def get_placeholders(text: str) -> List[str]:
     return re.findall(r"%\w+%", text)
 
 

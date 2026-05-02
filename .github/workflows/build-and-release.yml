@@ -1,11 +1,10 @@
-name: Build and Release EasyBot-MCDR
+name: 测试、构建与发布 EasyBot-MCDR
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
   workflow_dispatch:
-    # 允许手动触发工作流
     inputs:
       version:
         description: '手动指定版本号（可选）'
@@ -14,16 +13,16 @@ on:
 
 permissions:
   contents: write
-  # 授予创建和更新Release所需的权限
 
 jobs:
-  build:
+  test:
+    name: 运行测试
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 设置Python环境
+      - name: 配置 Python 环境
         uses: actions/setup-python@v5
         with:
           python-version: '3.12.8'
@@ -34,10 +33,50 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: 安装MCDReforged
+      - name: 安装 MCDReforged
         run: pip install mcdreforged>=2.14
 
-      - name: 使用MCDReforged打包插件
+      - name: 执行测试套件
+        id: tests
+        run: |
+          python tests/test_plugin.py > test-report.md 2>&1 || TEST_EXIT=$?
+          echo "test_exit=${TEST_EXIT:-0}" >> $GITHUB_OUTPUT
+          cat test-report.md
+
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: test-report.md
+
+      - name: 测试未通过则终止
+        if: steps.tests.outputs.test_exit != '0'
+        run: exit 1
+
+  build:
+    name: 构建与发布
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.8'
+          cache: 'pip'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: 安装 MCDReforged
+        run: pip install mcdreforged>=2.14
+
+      - name: 使用 MCDReforged 打包插件
         run: mcdreforged pack
 
       - name: 获取版本号
@@ -51,13 +90,43 @@ jobs:
             echo "VERSION=$(grep -o '"version": "[^"]*"' mcdreforged.plugin.json | sed 's/"version": "\([^"]*\)"/\1/')" >> $GITHUB_ENV
           fi
 
-      - name: 查找打包生成的文件
+      - name: 查找 .mcdr 构建产物
         id: find_files
         run: |
-          # 查找mcdreforged pack生成的.mcdr文件
           MCDR_FILE=$(find . -name "*.mcdr" | sort -r | head -n 1)
           echo "MCDR_PATH=$MCDR_FILE" >> $GITHUB_ENV
           echo "MCDR_NAME=$(basename $MCDR_FILE)" >> $GITHUB_ENV
+
+      - name: 下载测试报告
+        uses: actions/download-artifact@v4
+        with:
+          name: test-report
+
+      - name: 生成 Release 说明
+        id: release_body
+        run: |
+          # 读取测试报告摘要（前 30 行）
+          SUMMARY=$(head -30 test-report.md 2>/dev/null || echo "测试报告不可用")
+
+          cat <<'BODY_EOF' > release_body.md
+          ## EasyBot-MCDR ${{ env.VERSION }}
+
+          ### 版本信息
+          - 插件版本: ${{ env.VERSION }}
+          - MCDReforged: >= 2.14
+          - Python: 3.12.8
+
+          ### 测试报告
+
+          $SUMMARY
+
+          ---
+
+          完整测试报告已作为构建产物上传。
+          BODY_EOF
+
+          # 去除 heredoc 缩进
+          sed -i 's/^          //' release_body.md
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
@@ -66,21 +135,13 @@ jobs:
           path: |
             ${{ env.MCDR_PATH }}
 
-      - name: 发布到GitHub Release
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: 发布到 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          # 如果是标签推送，使用标签作为版本号
           tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref || format('v{0}', env.VERSION) }}
-          name: EasyBot-MCDR ${{ env.VERSION || 'Development Build' }}
-          body: |
-            ## EasyBot-MCDR ${{ env.VERSION || 'Development Build' }}
-            
-            ### 版本信息
-            - 插件版本: ${{ env.VERSION || 'Development Build' }}
-            - MCDReforged: >= 2.14
-            
-            ### 更新内容
+          name: EasyBot-MCDR ${{ env.VERSION }}
+          body_path: release_body.md
           draft: false
           prerelease: contains('${{ env.VERSION }}', 'beta') || contains('${{ env.VERSION }}', 'alpha')
           generate_release_notes: true

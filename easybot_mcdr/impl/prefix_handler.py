@@ -1,85 +1,87 @@
 import re
-from typing import List, Type
+from typing import Dict, List, Type
 
-# Dynamically collect available handlers in a preferred order
+# Dynamically collect available handlers
+_handler_map: Dict[str, Type] = {}
 _handler_classes: List[Type] = []
-try:
-    from mcdreforged.handler.impl import ForgeHandler
-    _handler_classes.append(ForgeHandler)
-except Exception:
-    pass
-try:
-    from mcdreforged.handler.impl import FabricHandler
-    _handler_classes.append(FabricHandler)
-except Exception:
-    pass
-try:
-    # Some environments only expose Bukkit/Paper via Spigot-like handler
-    from mcdreforged.handler.impl import SpigotHandler
-    _handler_classes.append(SpigotHandler)
-except Exception:
-    pass
-try:
-    from mcdreforged.handler.impl import PaperHandler
-    _handler_classes.append(PaperHandler)
-except Exception:
-    pass
-try:
-    from mcdreforged.handler.impl import VanillaHandler
-    _handler_classes.append(VanillaHandler)
-except Exception:
-    pass
+
+_try_imports = [
+    ("forge", "ForgeHandler"),
+    ("fabric", "FabricHandler"),
+    ("spigot", "SpigotHandler"),
+    ("paper", "PaperHandler"),
+    ("vanilla", "VanillaHandler"),
+]
+
+for name, cls_name in _try_imports:
+    try:
+        mod = __import__("mcdreforged.handler.impl", fromlist=[cls_name])
+        cls = getattr(mod, cls_name)
+        _handler_map[name] = cls
+        _handler_classes.append(cls)
+    except (ImportError, AttributeError):
+        pass
 
 # Final fallback: if nothing imported, raise at runtime clearly
 if not _handler_classes:
     raise ImportError('No base handlers available from mcdreforged.handler.impl')
 
+# Default base class is the first successfully imported handler
+_default_base = _handler_classes[0]
 
-class PrefixNameHandler(_handler_classes[0]):
-    """
-    A server handler that parses chat lines with player name prefixes, e.g.
-    "<[Builder]Steve> Hello" -> player="Steve", content="Hello"
-    
-    Composite approach: try multiple base handlers (Forge/Fabric/Spigot/Paper/Vanilla)
-    in order to maximize parse success across server types. If none recognize player,
-    apply prefix post-processing.
-    """
+AVAILABLE_HANDLERS = list(_handler_map.keys())
 
-    def get_name(self) -> str:
-        return 'easybot_prefix_handler'
 
-    def parse_server_stdout(self, text: str):
-        # Try each underlying handler until one yields a result
-        info = None
-        last_info = None
-        for cls in _handler_classes:
-            parser = getattr(self, f'_eb_{cls.__name__}', None)
-            if parser is None:
+def _make_handler_class(base_class: Type, name: str = "PrefixNameHandler"):
+    class Handler(base_class):
+        def get_name(self) -> str:
+            return 'easybot_prefix_handler'
+
+        def parse_server_stdout(self, text: str):
+            info = None
+            for cls in _handler_classes:
+                parser = getattr(self, f'_eb_{cls.__name__}', None)
+                if parser is None:
+                    try:
+                        parser = cls()
+                    except Exception:
+                        continue
+                    setattr(self, f'_eb_{cls.__name__}', parser)
                 try:
-                    parser = cls()
+                    last_info = parser.parse_server_stdout(text)
+                    if last_info is not None:
+                        info = last_info
+                        if getattr(info, 'player', None):
+                            break
                 except Exception:
                     continue
-                setattr(self, f'_eb_{cls.__name__}', parser)
-            try:
-                last_info = parser.parse_server_stdout(text)
-                if last_info is not None:
-                    info = last_info
-                    # Prefer the first one that recognizes a player name
-                    if getattr(info, 'player', None):
-                        break
-            except Exception:
-                continue
 
-        if info is None:
-            # As a last resort, call our own base implementation (first class)
-            info = super().parse_server_stdout(text)
+            if info is None:
+                info = super().parse_server_stdout(text)
 
-        # Only try to parse when no parser recognized a player
-        if info.player is None:
-            # Match like: [Not Secure] <[AnyWord]PlayerName> Message or <[AnyWord]PlayerName> Message
-            # prefix group is optional capture for readability; only name+message used
-            m = re.fullmatch(r'(?:\[Not Secure\] )?<\[(?P<prefix>[^\]]+)\](?P<name>[^>]+)> (?P<message>.*)', info.content)
-            if m is not None and self._verify_player_name(m['name']):
-                info.player = m['name']
-                info.content = m['message']
-        return info
+            if info.player is None:
+                m = re.fullmatch(r'(?:\[Not Secure\] )?<\[(?P<prefix>[^\]]+)\](?P<name>[^>]+)> (?P<message>.*)', info.content)
+                if m is not None and self._verify_player_name(m['name']):
+                    info.player = m['name']
+                    info.content = m['message']
+            return info
+
+    Handler.__name__ = name
+    Handler.__qualname__ = name
+    return Handler
+
+
+def create_handler(handler_name: str = "forge"):
+    """
+    Create a PrefixNameHandler instance based on the configured handler name.
+
+    Args:
+        handler_name: One of "forge", "fabric", "spigot", "paper", "vanilla".
+                      Falls back to the default (first available) handler if not found.
+
+    Returns:
+        An instance of PrefixNameHandler with the appropriate base class.
+    """
+    handler_name = handler_name.lower()
+    base_class = _handler_map.get(handler_name, _default_base)
+    return _make_handler_class(base_class)()

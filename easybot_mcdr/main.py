@@ -6,7 +6,7 @@ from easybot_mcdr.utils import is_white_list_enable
 from easybot_mcdr.websocket.ws_ext import ExtendedEasyBotWsClient as EasyBotWsClient
 from easybot_mcdr.impl.get_server_info import get_online_mode
 import easybot_mcdr.impl.cross_server_chat
-from easybot_mcdr.impl.prefix_handler import PrefixNameHandler
+from easybot_mcdr.impl.prefix_handler import create_handler, AVAILABLE_HANDLERS
 from easybot_mcdr.impl.rcon_auto_config import check_and_configure_rcon
 import re
 import json
@@ -69,8 +69,10 @@ async def on_load(server: PluginServerInterface, prev_module):
         # 加载配置
         load_config(server)
         
-        # 注册服务器处理器
-        server.register_server_handler(PrefixNameHandler())
+        # 注册服务器处理器（根据配置选择基础处理器）
+        handler_name = get_config().get("server_handler", "forge")
+        server.logger.info(f"使用服务器处理器: {handler_name} (可用: {', '.join(AVAILABLE_HANDLERS)})")
+        server.register_server_handler(create_handler(handler_name))
 
         # 启动UUID检查线程
         start_uuid_check_thread(server)
@@ -336,7 +338,7 @@ async def show_plugin_info(source: CommandSource):
         f'§b插件版本: §f{get_plugin_version()}',
         '§b插件名称: §fEasyBot MCDR',
         '§b功能介绍: §f跨服务器聊天、玩家数据同步、假人过滤',
-        f'§b服务器模式: §f{'正版' if get_online_mode() else '离线'}模式',
+        f'§b服务器模式: §f{"正版" if get_online_mode() else "离线"}模式',
         '§b使用帮助: §f!!ez help',
         '---------------------------------------------'
     ]
