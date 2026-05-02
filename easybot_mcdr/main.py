@@ -6,7 +6,7 @@ from easybot_mcdr.utils import is_white_list_enable
 from easybot_mcdr.websocket.ws_ext import ExtendedEasyBotWsClient as EasyBotWsClient
 from easybot_mcdr.impl.get_server_info import get_online_mode
 import easybot_mcdr.impl.cross_server_chat
-from easybot_mcdr.impl.prefix_handler import create_handler, AVAILABLE_HANDLERS
+from easybot_mcdr.impl.prefix_handler import create_handler, detect_handler_from_mcdr, AVAILABLE_HANDLERS
 from easybot_mcdr.impl.rcon_auto_config import check_and_configure_rcon
 import re
 import json
@@ -69,9 +69,14 @@ async def on_load(server: PluginServerInterface, prev_module):
         # 加载配置
         load_config(server)
         
-        # 注册服务器处理器（根据配置选择基础处理器）
-        handler_name = get_config().get("server_handler", "forge")
-        server.logger.info(f"使用服务器处理器: {handler_name} (可用: {', '.join(AVAILABLE_HANDLERS)})")
+        # 自动检测服务端类型并注册处理器
+        cfg_handler = get_config().get("server_handler", "")
+        if cfg_handler in AVAILABLE_HANDLERS:
+            handler_name = cfg_handler
+            server.logger.info(f"使用配置指定的处理器: {handler_name}")
+        else:
+            handler_name = detect_handler_from_mcdr(server)
+            server.logger.info(f"自动检测到服务端类型: {handler_name} (可用: {', '.join(AVAILABLE_HANDLERS)})")
         server.register_server_handler(create_handler(handler_name))
 
         # 启动UUID检查线程

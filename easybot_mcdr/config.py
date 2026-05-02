@@ -57,9 +57,9 @@ def load_config(server: PluginServerInterface):
             config["kick_delay_seconds"] = 5
             save_config(server)
 
-        # 确保 server_handler 配置存在且有效
+        # 确保 server_handler 配置存在（留空则自动检测）
         if "server_handler" not in config:
-            config["server_handler"] = "forge"
+            config["server_handler"] = ""
             save_config(server)
             
         server.logger.info(f"配置文件路径: {config_file_path}")

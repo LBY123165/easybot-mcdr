@@ -85,3 +85,32 @@ def create_handler(handler_name: str = "forge"):
     handler_name = handler_name.lower()
     base_class = _handler_map.get(handler_name, _default_base)
     return _make_handler_class(base_class)()
+
+
+def detect_handler_from_mcdr(server) -> str:
+    """
+    Automatically detect the server type from MCDR's current handler.
+
+    Reads the handler that MCDR has already selected (from config or auto-detection),
+    extracts its class name (e.g. ForgeHandler -> forge), and returns the matching
+    handler name for create_handler(). Falls back to "forge" if detection fails.
+
+    Args:
+        server: PluginServerInterface instance (from on_load)
+
+    Returns:
+        Handler name string: "forge", "fabric", "spigot", "paper", or "vanilla"
+    """
+    try:
+        # Access MCDR's internal handler manager to get the currently active handler
+        handler_mgr = server._mcdr_server.server_handler_manager
+        current = handler_mgr.get_current_handler()
+        class_name = current.__class__.__name__  # e.g. "ForgeHandler"
+
+        # Strip "Handler" suffix and lowercase: ForgeHandler -> forge
+        detected = class_name.replace("Handler", "").lower()
+        if detected in _handler_map:
+            return detected
+    except Exception:
+        pass
+    return "forge"
