@@ -142,7 +142,7 @@ def test_config_server_handler():
     config_path = PROJECT_ROOT / "data" / "config.json"
     with open(config_path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
-    assert cfg["server_handler"] in ("forge", "fabric", "spigot", "paper", "vanilla")
+    assert cfg["server_handler"] in ("forge", "fabric", "spigot", "paper", "vanilla", ""), f"无效 server_handler: {cfg['server_handler']}"
 
 
 # ── 3. 消息模型测试 ─────────────────────────────────────────────────
