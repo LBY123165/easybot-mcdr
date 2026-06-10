@@ -36,6 +36,33 @@ jobs:
       - name: 安装MCDReforged
         run: pip install mcdreforged>=2.14
 
+      - name: 安装测试依赖
+        run: pip install pytest pytest-asyncio>=1.0.0 -q
+
+      - name: 运行插件测试
+        id: plugin_test
+        run: |
+          pytest tests/test_plugin.py -v --tb=short 2>&1 | tee /tmp/test-output.txt
+          echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
+        continue-on-error: true
+
+      - name: 生成测试报告
+        if: always()
+        run: |
+          TOTAL=$(grep -c "PASSED\|FAILED\|ERROR" /tmp/test-output.txt || echo "0")
+          PASSED=$(grep -c "PASSED" /tmp/test-output.txt || echo "0")
+          FAILED=$(grep -c "FAILED" /tmp/test-output.txt || echo "0")
+
+          echo "TEST_PASSED=$PASSED" >> $GITHUB_ENV
+          echo "TEST_FAILED=$FAILED" >> $GITHUB_ENV
+          echo "TEST_TOTAL=$TOTAL" >> $GITHUB_ENV
+
+          if [ "$FAILED" -gt "0" ]; then
+            echo "TEST_STATUS=❌ $FAILED 项失败" >> $GITHUB_ENV
+          else
+            echo "TEST_STATUS=✅ 全部通过" >> $GITHUB_ENV
+          fi
+
       - name: 使用MCDReforged打包插件
         run: mcdreforged pack
 
@@ -103,6 +130,14 @@ jobs:
             ### 版本信息
             - 插件版本: ${{ env.VERSION || 'Development Build' }}
             - MCDReforged: >= 2.14
+
+            ### 测试结果
+            | 指标 | 结果 |
+            |------|------|
+            | 测试状态 | ${{ env.TEST_STATUS }} |
+            | 总计 | ${{ env.TEST_TOTAL }} |
+            | 通过 | ✅ ${{ env.TEST_PASSED }} |
+            | 失败 | ❌ ${{ env.TEST_FAILED }} |
 
             ### 代码质量
             | 检查项 | 状态 |

@@ -28,7 +28,52 @@ jobs:
           pip install pytest pytest-asyncio>=1.0.0
 
       - name: 运行测试
-        run: pytest -v
+        run: pytest -v --tb=short 2>&1 | tee test-output.txt
+        continue-on-error: true
+
+      - name: 生成测试报告
+        if: always()
+        run: |
+          echo "## 🧪 测试报告" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # 统计结果
+          TOTAL=$(grep -c "PASSED\|FAILED\|ERROR" test-output.txt || echo "0")
+          PASSED=$(grep -c "PASSED" test-output.txt || echo "0")
+          FAILED=$(grep -c "FAILED" test-output.txt || echo "0")
+
+          echo "| 指标 | 结果 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 总计 | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| 通过 | ✅ $PASSED |" >> $GITHUB_STEP_SUMMARY
+          echo "| 失败 | ❌ $FAILED |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # 测试详情表格
+          echo "### 详细结果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 测试项 | 结果 |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------|" >> $GITHUB_STEP_SUMMARY
+          grep -E "(PASSED|FAILED|ERROR)" test-output.txt | sed 's/.*:://' | sed 's/ PASSED/ ✅ |/' | sed 's/ FAILED/ ❌ |/' | sed 's/ ERROR/ ⚠️ |/' >> $GITHUB_STEP_SUMMARY || true
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # 如果有失败，显示详细信息
+          if [ "$FAILED" -gt "0" ]; then
+            echo "### ❌ 失败详情" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -A 20 "FAILED" test-output.txt | head -50 >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # 设置输出变量供后续步骤使用
+          echo "TEST_PASSED=$PASSED" >> $GITHUB_ENV
+          echo "TEST_FAILED=$FAILED" >> $GITHUB_ENV
+          echo "TEST_TOTAL=$TOTAL" >> $GITHUB_ENV
+
+          # 如果有失败则返回错误
+          if [ "$FAILED" -gt "0" ]; then
+            exit 1
+          fi
   lint:
     name: 代码检查
     runs-on: ubuntu-latest
