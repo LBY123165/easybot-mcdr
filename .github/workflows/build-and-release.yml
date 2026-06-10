@@ -68,6 +68,12 @@ jobs:
             echo "TEST_STATUS=✅ 全部通过" >> $GITHUB_ENV
           fi
 
+          # 生成详细测试报告表格
+          echo "TEST_TABLE<<EOF" >> $GITHUB_ENV
+          grep -E "(PASSED|FAILED|ERROR)" /tmp/test-output.txt | sed 's/.*:://' | sed 's/ PASSED/ | 通过 |/' | sed 's/ FAILED/ | 失败 |/' | sed 's/ ERROR/ | 错误 |/' | awk -F'|' '{printf "| %s | %s |\n", $1, $2}' >> /tmp/test-table.txt || true
+          cat /tmp/test-table.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: 使用MCDReforged打包插件
         run: mcdreforged pack
 
@@ -135,14 +141,15 @@ jobs:
             ### 版本信息
             - 插件版本: ${{ env.VERSION || 'Development Build' }}
             - MCDReforged: >= 2.14
+            - Python: 3.12
 
-            ### 测试结果
+            ### 测试报告
             | 指标 | 结果 |
             |------|------|
-            | 测试状态 | ${{ env.TEST_STATUS }} |
             | 总计 | ${{ env.TEST_TOTAL }} |
-            | 通过 | ✅ ${{ env.TEST_PASSED }} |
-            | 失败 | ❌ ${{ env.TEST_FAILED }} |
+            | 通过 | ${{ env.TEST_PASSED }} |
+            | 失败 | ${{ env.TEST_FAILED }} |
+            | 通过率 | ${{ env.TEST_STATUS }} |
 
             ### 代码质量
             | 检查项 | 状态 |
@@ -151,6 +158,9 @@ jobs:
             | 依赖安全 | ${{ env.AUDIT_STATUS }} |
 
             ### 更新内容
+            - CI/CD 流程优化与集成测试
+            - 代码质量检查与安全扫描
+            - 功能增强与 Bug 修复
           draft: false
           prerelease: contains('${{ env.VERSION }}', 'beta') || contains('${{ env.VERSION }}', 'alpha')
           generate_release_notes: true
