@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 集成测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+          pip install mcdreforged>=2.14
+          pip install pytest pytest-asyncio
+
+      - name: 运行测试
+        run: pytest -v
+  lint:
+    name: 代码检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装 ruff
+        run: pip install ruff
+
+      - name: Ruff 代码检查
+        run: |
+          if ruff check . --output-file ruff-report.txt 2>&1 | tee ruff-output.txt; then
+            echo "## ✅ Ruff 代码检查通过" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Ruff 代码检查发现问题" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat ruff-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  type-check:
+    name: 类型检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+          pip install mcdreforged>=2.14
+
+      - name: 安装 pyright
+        run: pip install pyright
+
+      - name: Pyright 类型检查
+        run: |
+          if pyright 2>&1 | tee pyright-output.txt; then
+            echo "## ✅ Pyright 类型检查通过" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ⚠️ Pyright 类型检查发现问题（非阻断）" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -20 pyright-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+  security:
+    name: 安全扫描
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装 pip-audit
+        run: pip install pip-audit
+
+      - name: 审计依赖安全
+        run: |
+          if pip-audit -r requirements.txt 2>&1 | tee audit-output.txt; then
+            echo "## ✅ 依赖安全检查通过" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ 依赖安全检查发现问题" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat audit-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  build:
+    name: 构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+          pip install mcdreforged>=2.14
+
+      - name: 构建插件包
+        run: mcdreforged pack
+
+      - name: 验证构建产物
+        run: |
+          MCDR_FILE=$(find . -name "*.mcdr" | head -n 1)
+          if [ -z "$MCDR_FILE" ]; then
+            echo "错误：未找到 .mcdr 文件"
+            exit 1
+          fi
+          echo "构建成功: $MCDR_FILE"
+          ls -lh "$MCDR_FILE"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: easybot-mcdr-build
+          path: "*.mcdr"
+
+  import-check:
+    name: 导入检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+          pip install mcdreforged>=2.14
+
+      - name: 检查模块导入
+        run: python -c "
+          import importlib, sys, pathlib
+
+          errors = []
+          for f in pathlib.Path('easybot_mcdr').rglob('*.py'):
+              mod = f.with_suffix('').as_posix().replace('/', '.')
+              try:
+                  importlib.import_module(mod)
+              except Exception as e:
+                  # 跳过 MCDR 运行时错误，只关注导入/语法问题
+                  if isinstance(e, (SyntaxError, ImportError, ModuleNotFoundError)):
+                      errors.append((mod, str(e)))
+
+          if errors:
+              for m, e in errors:
+                  print(f'失败: {m} -> {e}', file=sys.stderr)
+              sys.exit(1)
+          print('所有模块均可导入（或仅有预期的 MCDR 运行时依赖）')
+          "

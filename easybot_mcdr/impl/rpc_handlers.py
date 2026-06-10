@@ -16,17 +16,13 @@ async def ping(ctx, data, session_info):
     await ctx.callback({"success": True, "text": "pong"})
 
 
-@bridge_rpc("GET_SERVER_INFO", description="Get server basic info")
-async def get_server_info(ctx, data, session_info):
-    await ctx.callback({"success": True, "info": _behavior().get_info()})
+@bridge_rpc("GET_EXTENSIONS", description="Get installed extensions")
+async def get_extensions(ctx, data, session_info):
+    await ctx.callback({"success": True, "extensions": {}})
 
 
 @bridge_rpc("SYNC_SEGMENTS", description="Sync structured message to chat")
 async def sync_segments(ctx, data, session_info):
-    """
-    接收 segments 和 fallback text，将其投递到聊天。
-    segments: list of dict, text: str
-    """
     segments = segments_from_list(data.get("segments", []) or [])
     text = data.get("text", "")
     _behavior().sync_to_chat_extra(segments, text)
@@ -37,7 +33,7 @@ async def sync_segments(ctx, data, session_info):
 async def run_command(ctx, data, session_info):
     player = data.get("player_name") or ""
     command = data.get("command") or ""
-    enable_papi = False  # PAPI 已移除
+    enable_papi = False
     try:
         result = _behavior().run_command(player, command, enable_papi)
         await ctx.callback({"success": True, "text": result})
@@ -91,3 +87,28 @@ async def get_player_list(ctx, data, session_info):
         await ctx.callback({"success": True, "players": players})
     except Exception as e:
         await ctx.callback({"success": False, "text": str(e)})
+
+
+@bridge_rpc("MODULE_INSTALLED", description="Check if a module/plugin is installed")
+async def module_installed(ctx, data, session_info):
+    name = data.get("name") or ""
+    await ctx.callback({"success": True, "result": _behavior().module_is_installed(name)})
+
+
+@bridge_rpc("MODULE_ENABLED", description="Check if a module/plugin is enabled")
+async def module_enabled(ctx, data, session_info):
+    name = data.get("name") or ""
+    await ctx.callback({"success": True, "result": _behavior().module_is_enabled(name)})
+
+
+@bridge_rpc("IS_AUTHENTICATED", description="Check if a player is authenticated/bound")
+async def is_authenticated(ctx, data, session_info):
+    player_name = data.get("player_name") or ""
+    await ctx.callback({"success": True, "result": _behavior().is_authenticated(player_name)})
+
+
+@bridge_rpc("GET_PLAYER_SKIN", description="Get player skin URL")
+async def get_player_skin(ctx, data, session_info):
+    player_name = data.get("player_name") or ""
+    skin_url = _behavior().get_player_skin(player_name)
+    await ctx.callback({"success": True, "skin_url": skin_url or ""})

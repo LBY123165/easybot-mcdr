@@ -1,8 +1,8 @@
-from typing import List
+from typing import List, Optional
 
 from mcdreforged.api.all import PluginServerInterface
 from easybot_mcdr.bridge_behavior import BridgeBehavior
-from easybot_mcdr.message import Segment, segments_to_list
+from easybot_mcdr.message import Segment
 
 
 class DefaultBridgeBehavior(BridgeBehavior):
@@ -10,21 +10,17 @@ class DefaultBridgeBehavior(BridgeBehavior):
         self.server = server
 
     def run_command(self, player_name: str, command: str, enable_papi: bool) -> str:
-        # PAPI 支持已移除，直接执行原命令
         cmd = command
-
         try:
             if self.server.is_rcon_running():
                 return str(self.server.rcon_query(cmd))
             else:
-                # fallback：直接执行命令
                 self.server.execute(cmd)
                 return "executed"
         except Exception as e:
             return f"error: {e}"
 
     def papi_query(self, player_name: str, query: str) -> str:
-        # 已移除 PAPI 支持，原样返回
         return query
 
     def get_info(self):
@@ -47,16 +43,14 @@ class DefaultBridgeBehavior(BridgeBehavior):
         try:
             self.server.execute(f"kick {player} {kick_message}")
         except Exception:
-            # fallback to RCON if available
             if self.server.is_rcon_running():
                 self.server.rcon_query(f"kick {player} {kick_message}")
 
     def sync_to_chat_extra(self, segments: List[Segment], text: str):
-        # 简化：仅用文本部分输出，其余 segment 转换为字符串描述
         try:
             if segments:
-                pretty = " ".join([s.to_dict().__str__() for s in segments])
-                self.server.say(f"{text} {pretty}")
+                from easybot_mcdr.impl.message_sync import render_segments
+                render_segments(segments, text)
             else:
                 self.server.say(text)
         except Exception:
@@ -64,3 +58,37 @@ class DefaultBridgeBehavior(BridgeBehavior):
 
     def get_player_list(self):
         return list(self.server.get_online_players())
+
+    def module_is_installed(self, name: str) -> bool:
+        return False
+
+    def module_is_enabled(self, name: str) -> bool:
+        return False
+
+    def is_authenticated(self, name: str) -> bool:
+        return False
+
+    def get_player_skin(self, player_name: str) -> Optional[str]:
+        from easybot_mcdr.impl.get_server_info import get_online_mode, get_skins_restorer
+        online = get_online_mode()
+        has_sr = get_skins_restorer()
+
+        if online or has_sr:
+            return f"https://mineskin.eu/download/{player_name}"
+
+        # 离线模式无皮肤站: 查询 Mojang 判断是否正版
+        from easybot_mcdr.impl.player_list import _check_premium_sync
+        if _check_premium_sync(player_name):
+            return f"https://mineskin.eu/download/{player_name}"
+
+        # 非正版: 尝试通过 UUID 获取头像
+        try:
+            players = self.server.get_online_players()
+            for p in players:
+                if hasattr(p, 'name') and p.name == player_name:
+                    return f"https://mc-heads.net/skin/{p.uuid}"
+                if str(p) == player_name:
+                    return f"https://mc-heads.net/skin/{p.uuid}"
+        except Exception:
+            pass
+        return None
