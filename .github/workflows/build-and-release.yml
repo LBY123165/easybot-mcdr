@@ -49,15 +49,20 @@ jobs:
       - name: 生成测试报告
         if: always()
         run: |
-          TOTAL=$(grep -c "PASSED\|FAILED\|ERROR" /tmp/test-output.txt || echo "0")
-          PASSED=$(grep -c "PASSED" /tmp/test-output.txt || echo "0")
-          FAILED=$(grep -c "FAILED" /tmp/test-output.txt || echo "0")
+          TOTAL=$(grep -c -E "PASSED|FAILED|ERROR" /tmp/test-output.txt || true)
+          PASSED=$(grep -c "PASSED" /tmp/test-output.txt || true)
+          FAILED=$(grep -c "FAILED" /tmp/test-output.txt || true)
+
+          # 确保变量是数字（默认为0）
+          TOTAL=${TOTAL:-0}
+          PASSED=${PASSED:-0}
+          FAILED=${FAILED:-0}
 
           echo "TEST_PASSED=$PASSED" >> $GITHUB_ENV
           echo "TEST_FAILED=$FAILED" >> $GITHUB_ENV
           echo "TEST_TOTAL=$TOTAL" >> $GITHUB_ENV
 
-          if [ "$FAILED" -gt "0" ]; then
+          if [ "$FAILED" -gt "0" ] 2>/dev/null; then
             echo "TEST_STATUS=❌ $FAILED 项失败" >> $GITHUB_ENV
           else
             echo "TEST_STATUS=✅ 全部通过" >> $GITHUB_ENV
