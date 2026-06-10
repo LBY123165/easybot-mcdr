@@ -159,7 +159,8 @@ jobs:
           pip install mcdreforged>=2.14
 
       - name: 检查模块导入
-        run: python -c "
+        run: |
+          python -c "
           import importlib, sys, pathlib
 
           errors = []
