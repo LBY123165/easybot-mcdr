@@ -74,6 +74,10 @@ async def on_load(server: PluginServerInterface, prev_module):
         # 加载配置
         load_config(server)
 
+        # 初始化 behavior_impl (PlayerDataGetter 等)
+        from easybot_mcdr import behavior_impl
+        behavior_impl.set_server(server)
+
         # 启动本地图片服务器（如果启用了图片上传）
         if get_config().get("image_upload", {}).get("enabled"):
             from easybot_mcdr.impl.chat_image import start_local_image_server
@@ -560,7 +564,9 @@ def register_event_listeners(server: PluginServerInterface):
     server.register_event_listener('player_death', on_player_death)
     server.register_event_listener('mcdr.player_left', on_player_left)
     server.register_event_listener('player_left', on_player_left)
-    server.register_event_listener('player_joined', on_player_joined)
+    # 注意: mcdr.player_joined 事件已在 player.py 的 init_player_api() 中以优先级1注册
+    # 这里使用优先级10，确保在 player.py 的数据更新之后执行上报逻辑
+    server.register_event_listener('mcdr.player_joined', on_player_joined, priority=10)
     server.register_event_listener('mcdr.user_info', on_user_info)
 
     server.logger.info("事件监听器注册完成")

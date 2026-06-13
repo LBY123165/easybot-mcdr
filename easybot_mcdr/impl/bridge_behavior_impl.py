@@ -12,11 +12,16 @@ class DefaultBridgeBehavior(BridgeBehavior):
     def run_command(self, player_name: str, command: str, enable_papi: bool) -> str:
         cmd = command
         try:
+            # MCDR 命令 (!! 开头) 不经过 RCON, 直接通过 server.execute() 执行
+            if cmd.strip().startswith("!!"):
+                self.server.execute(cmd)
+                return "(MCDR 命令已执行)"
+            # 服务端命令优先使用 RCON 获取输出
             if self.server.is_rcon_running():
                 return str(self.server.rcon_query(cmd))
             else:
                 self.server.execute(cmd)
-                return "executed"
+                return "(命令已执行, RCON 未启用无法获取输出)"
         except Exception as e:
             return f"error: {e}"
 
@@ -92,3 +97,14 @@ class DefaultBridgeBehavior(BridgeBehavior):
         except Exception:
             pass
         return None
+
+    def read_nbt_data(self, player_uuid: str, data_type: int) -> Optional[dict]:
+        """
+        读取玩家 NBT 数据
+        data_type: 0=PlayerData, 1=Advancements, 2=Statistics
+        """
+        from easybot_mcdr.behavior_impl import get_player_data_getter
+        getter = get_player_data_getter()
+        if getter is None:
+            return None
+        return getter.read_nbt_data(player_uuid, data_type)

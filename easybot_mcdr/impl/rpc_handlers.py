@@ -29,18 +29,6 @@ async def sync_segments(ctx, data, session_info):
     await ctx.callback({"success": True})
 
 
-@bridge_rpc("RUN_COMMAND", description="Run command (PAPI disabled)")
-async def run_command(ctx, data, session_info):
-    player = data.get("player_name") or ""
-    command = data.get("command") or ""
-    enable_papi = False
-    try:
-        result = _behavior().run_command(player, command, enable_papi)
-        await ctx.callback({"success": True, "text": result})
-    except Exception as e:
-        await ctx.callback({"success": False, "text": str(e)})
-
-
 @bridge_rpc("PAPI_QUERY", description="PAPI disabled")
 async def papi_query(ctx, data, session_info):
     query = data.get("query") or ""
@@ -112,3 +100,50 @@ async def get_player_skin(ctx, data, session_info):
     player_name = data.get("player_name") or ""
     skin_url = _behavior().get_player_skin(player_name)
     await ctx.callback({"success": True, "skin_url": skin_url or ""})
+
+
+@bridge_rpc("READ_NBT_DATA", description="Read player NBT data (0=PlayerData, 1=Advancements, 2=Statistics)")
+async def read_nbt_data(ctx, data, session_info):
+    player_uuid = data.get("player_uuid") or ""
+    data_type = data.get("data_type", 0)
+
+    # 支持字符串类型的 data_type 转换为数字
+    DATA_TYPE_MAP = {
+        "PlayerData": 0,
+        "Advancements": 1,
+        "Statistics": 2,
+        "playerdata": 0,
+        "advancements": 1,
+        "statistics": 2,
+    }
+    if isinstance(data_type, str):
+        data_type = DATA_TYPE_MAP.get(data_type, 0)
+
+    try:
+        result = _behavior().read_nbt_data(player_uuid, data_type)
+        if result is None:
+            await ctx.callback({
+                "success": False,
+                "message": "not found",
+                "result": 2  # ReadNbtResult.Notfound
+            })
+        else:
+            # 构建响应数据，确保包含 inventory 字段
+            response_data = {
+                "success": True,
+                "message": "found",
+                "result": 1,  # ReadNbtResult.Succeeded
+                "data": result
+            }
+            # 如果有解析后的 inventory，添加到顶层
+            if "inventory" in result:
+                response_data["inventory"] = result["inventory"]
+            elif "parsed" in result and "Inventory" in result.get("parsed", {}):
+                response_data["inventory"] = result["parsed"]["Inventory"]
+            await ctx.callback(response_data)
+    except Exception as e:
+        await ctx.callback({
+            "success": False,
+            "message": str(e),
+            "result": 3  # ReadNbtResult.Error
+        })

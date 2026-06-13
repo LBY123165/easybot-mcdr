@@ -353,10 +353,13 @@ class EasyBotWsClient:
             except Exception:
                 pass
             return None
+        # 发送完整的玩家信息，包括所有必要字段
         await self._send_packet("REPORT_PLAYER", {
             "player_name": player_name,
             "player_uuid": info["player_uuid"],
             "player_ip": info["ip"],
+            "skin_url": info.get("skin_url", ""),
+            "bedrock": info.get("bedrock", False),
         })
         return info
 

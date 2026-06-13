@@ -39,3 +39,6 @@ class BridgeBehavior(Protocol):
 
     def get_player_skin(self, player_name: str) -> Optional[str]:
         ...
+
+    def read_nbt_data(self, player_uuid: str, data_type: int) -> Optional[dict]:
+        ...

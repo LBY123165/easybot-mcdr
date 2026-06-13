@@ -90,6 +90,50 @@ class PlayerDataGetter:
             return None
 
         if type_name == "playerdata":
+            # 尝试通过 RCON 读取在线玩家的背包数据
+            # 需要使用在线玩家的名称来读取
+            from easybot_mcdr.api.player import online_players, uuid_map
+
+            # 首先通过 UUID 找到玩家名称
+            player_name = None
+            for name, uuid in uuid_map.items():
+                if uuid == player_uuid:
+                    player_name = name
+                    break
+
+            if player_name and player_name in online_players:
+                # 使用 data get entity 命令读取在线玩家数据
+                try:
+                    result = self._server.rcon_query(
+                        f"data get entity {player_name}"
+                    )
+                    if result and "has the following entity data" in result:
+                        # 解析原始数据，提取 Inventory 部分
+                        raw_data = result.split("has the following entity data: ", 1)
+                        if len(raw_data) > 1:
+                            entity_data_str = raw_data[1]
+                            # 提取 Inventory 部分
+                            import re
+                            inventory_match = re.search(
+                                r'Inventory: \[(.*?)\]',
+                                entity_data_str,
+                                re.DOTALL
+                            )
+                            if inventory_match:
+                                inventory_str = inventory_match.group(1)
+                                # 解析物品列表
+                                inventory = self._parse_inventory_items(inventory_str)
+                                return {
+                                    "raw": result,
+                                    "parsed": {
+                                        "Inventory": inventory
+                                    },
+                                    "inventory": inventory
+                                }
+                        return {"raw": result}
+                except Exception as e:
+                    logger.error(f"读取玩家背包数据失败: {e}")
+                    pass
             return None
 
         if type_name == "advancements":
@@ -115,6 +159,44 @@ class PlayerDataGetter:
             return None
 
         return None
+
+    def _parse_inventory_items(self, inventory_str: str) -> list:
+        """解析 Minecraft NBT 格式的物品列表"""
+        items = []
+        if not inventory_str:
+            return items
+
+        # 匹配每个物品: {count: 64, Slot: 0b, id: "minecraft:oak_planks"}
+        import re
+        item_pattern = re.compile(r'\{([^}]+)\}')
+        for match in item_pattern.finditer(inventory_str):
+            item_str = match.group(1)
+            item = {}
+
+            # 解析 count
+            count_match = re.search(r'count:\s*(\d+)', item_str)
+            if count_match:
+                item['count'] = int(count_match.group(1))
+
+            # 解析 Slot
+            slot_match = re.search(r'Slot:\s*(\d+)b?', item_str)
+            if slot_match:
+                item['slot'] = int(slot_match.group(1))
+
+            # 解析 id
+            id_match = re.search(r'id:\s*"([^"]+)"', item_str)
+            if id_match:
+                item['id'] = id_match.group(1)
+
+            # 解析 tag (如果有)
+            tag_match = re.search(r'tag:\s*\{([^}]+)\}', item_str)
+            if tag_match:
+                item['tag'] = tag_match.group(1)
+
+            if item:
+                items.append(item)
+
+        return items
 
     def get_entity_data(self, player: str, path: str = "", timeout: float = 5.0) -> Optional[dict]:
         raw = self.get_player_info(player, path, timeout)

@@ -27,11 +27,18 @@ async def exec_get_server_info(ctx: ExecContext, data:dict, _):
     has_skins_restorer = sr_found
 
     try:
+        # 检测 PAPI 支持 (仅 Bukkit 系列)
+        try:
+            from mcdreforged.handler.impl.bukkit_handler import BukkitHandler
+            is_bukkit = isinstance(server.get_server_handler(), BukkitHandler)
+        except Exception:
+            is_bukkit = False
+
         packet = {
             "server_name": "mcdr",
             "server_version": f"MCDR {server.get_plugin_metadata('mcdreforged').version}",
             "plugin_version": get_plugin_version(),
-            "is_papi_supported": False,
+            "is_papi_supported": is_bukkit,
             "is_command_supported": True,
             "has_geyser": False,
             "has_skins_restorer": sr_found,

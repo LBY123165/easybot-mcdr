@@ -29,7 +29,10 @@ async def on_player_joined(server: PluginServerInterface, player: str, info: Inf
             return
         server.logger.info(f"玩家 {player} 已加入并缓存: UUID={player_info['player_uuid']}, IP={player_info['ip']}")
         res = await wsc.login(player)
-        if res["kick"]:
+        if res is None:
+            server.logger.error(f"玩家 {player} 登录验证返回空响应")
+            return
+        if res.get("kick", False):
             kick_msg = res.get("kick_message", "验证失败")
             server.logger.info(f"检测到玩家 {player} 需要被踢出，等待加载延迟...")
             kick_map[player] = time.time()

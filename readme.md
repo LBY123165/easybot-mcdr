@@ -43,8 +43,6 @@ EasyBot-MCDR 通过 WebSocket 将 Minecraft 服务器与 EasyBot 中心服务器
 
 ### 其他
 - 配置热重载（`!!ez reload`）
-- 内置本地图片服务器，支持局域网内图片访问
-- 可选 imgbb 图床上传，支持公网图片分享
 
 ## 环境要求
 
@@ -85,7 +83,6 @@ EasyBot-MCDR 通过 WebSocket 将 Minecraft 服务器与 EasyBot 中心服务器
 | :--- | :--- | :--- |
 | `!!bind` / `!!ez bind` | 绑定社交平台账号 | 所有玩家 |
 | `!!unbind` / `!!ez unbind` | 解绑账号 | 所有玩家 |
-| `!!say <消息>` / `!!esay <消息>` | 跨服发送消息 | 所有玩家 |
 | `!!ez reload` | 重载配置 | OP |
 
 ## 配置说明
@@ -140,7 +137,7 @@ EasyBot-MCDR 通过 WebSocket 将 Minecraft 服务器与 EasyBot 中心服务器
 | `bot_filter.enabled` | bool | `true` | 启用假玩家过滤 |
 | `bot_filter.prefixes` | list | `["Bot_","BOT_","bot_"]` | 识别为机器人的名称前缀 |
 
-### 图片上传（可选）
+### 图片上传（暂不可用）
 
 启用后，QQ 群中的图片将在游戏内通过 [ChatImage](https://github.com/kitUIN/ChatImage) 模组渲染。
 
@@ -156,19 +153,19 @@ EasyBot-MCDR 通过 WebSocket 将 Minecraft 服务器与 EasyBot 中心服务器
 `EasyBot-MCDR` 是 `EasyBot` 插件的 MCDR 分支，与 `EasyBot-Bukkit` 功能有部分差异：
 
 | 特性 | MCDR 支持 | 说明 |
-| :--- |:-------:| :--- |
-| 消息同步 |    ✅    | |
-| 进入退出通知 |    ✅    | |
-| 强制绑定 |    ✅    | |
-| 命令绑定账号 |    ✅    | |
-| 命令模式消息同步 |    ✅    | |
-| 热重载 |    ✅    | |
-| 执行命令 |    ✅    | |
-| 绑定时执行命令 |    ✅    | |
-| 联动原版白名单 |    ✅    | |
-| 解绑时执行命令 |    ✅    | |
-| 死亡同步 |    x    | 不同服务端实现原理不同，无法稳定判断死亡原因 |
-| PlaceholderAPI |   ⚠️    | 目前仅支持 `%player_name%`，完整支持计划中 |
+| :--- | :---: | :--- |
+| 消息同步 | ✅ | |
+| 进入退出通知 | ✅ | |
+| 强制绑定 | ✅ | |
+| 命令绑定账号 | ✅ | |
+| 命令模式消息同步 | ✅ | |
+| 热重载 | ✅ | |
+| 执行命令 | ✅ | |
+| 绑定时执行命令 | ✅ | |
+| 联动原版白名单 | ✅ | |
+| 解绑时执行命令 | ✅ | |
+| 死亡同步 | :x: | 不同服务端实现原理不同，无法稳定判断死亡原因 |
+| PlaceholderAPI | ⚠️ | Bukkit 服务端通过 RCON 调用完整 PAPI，非 Bukkit 支持 `%player_name%`、`%player_uuid%`、`%player_ip%` 本地替换 |
 
 ## 开发
 
