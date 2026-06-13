@@ -1,7 +1,6 @@
-from easybot_mcdr.websocket.context import ExecContext
-from easybot_mcdr.websocket.ws import EasyBotWsClient
 from mcdreforged.api.all import *
 from mcdreforged.command.command_source import CommandSource
+from easybot_mcdr.rpc import bridge_rpc
 
 
 class _OutputCaptureSource(CommandSource):
@@ -48,8 +47,8 @@ async def _execute_mcdr_command_with_output(server, command: str) -> str:
         return f"(MCDR 命令执行失败: {e})"
 
 
-@EasyBotWsClient.listen_exec_op("RUN_COMMAND")
-async def exec_bind_success_notify(ctx: ExecContext, data: dict, _):
+@bridge_rpc("RUN_COMMAND", description="Execute a command on the server")
+async def run_command(ctx, data, session_info):
     server = ServerInterface.get_instance()
     logger = server.logger
 
