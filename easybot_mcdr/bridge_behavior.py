@@ -37,7 +37,7 @@ class BridgeBehavior(Protocol):
     def is_authenticated(self, name: str) -> bool:
         ...
 
-    def get_player_skin(self, player_name: str) -> Optional[str]:
+    def get_player_skin(self, player_name: str) -> Optional[dict]:
         ...
 
     def read_nbt_data(self, player_uuid: str, data_type: int) -> Optional[dict]:

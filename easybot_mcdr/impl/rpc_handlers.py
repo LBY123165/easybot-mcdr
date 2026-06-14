@@ -98,8 +98,21 @@ async def is_authenticated(ctx, data, session_info):
 @bridge_rpc("GET_PLAYER_SKIN", description="Get player skin URL")
 async def get_player_skin(ctx, data, session_info):
     player_name = data.get("player_name") or ""
-    skin_url = _behavior().get_player_skin(player_name)
-    await ctx.callback({"success": True, "skin_url": skin_url or ""})
+    skin_data = _behavior().get_player_skin(player_name)
+    if skin_data:
+        await ctx.callback({
+            "success": True,
+            "message": "found",
+            "result": 1,  # Succeeded
+            "skin_url": skin_data.get("skin_url", ""),
+            "cape_url": skin_data.get("cape_url", "")
+        })
+    else:
+        await ctx.callback({
+            "success": False,
+            "message": "not found",
+            "result": 2  # Notfound
+        })
 
 
 @bridge_rpc("READ_NBT_DATA", description="Read player NBT data (0=PlayerData, 1=Advancements, 2=Statistics)")
@@ -128,19 +141,15 @@ async def read_nbt_data(ctx, data, session_info):
                 "result": 2  # ReadNbtResult.Notfound
             })
         else:
-            # 构建响应数据，确保包含 inventory 字段
-            response_data = {
+            # 直接返回解析后的 JSON 数据作为 data 字段
+            # 服务端期望 data 字段是解析后的 JsonObject
+            parsed_data = result.get("parsed", {})
+            await ctx.callback({
                 "success": True,
                 "message": "found",
                 "result": 1,  # ReadNbtResult.Succeeded
-                "data": result
-            }
-            # 如果有解析后的 inventory，添加到顶层
-            if "inventory" in result:
-                response_data["inventory"] = result["inventory"]
-            elif "parsed" in result and "Inventory" in result.get("parsed", {}):
-                response_data["inventory"] = result["parsed"]["Inventory"]
-            await ctx.callback(response_data)
+                "data": parsed_data  # 直接返回解析后的 JSON 对象
+            })
     except Exception as e:
         await ctx.callback({
             "success": False,

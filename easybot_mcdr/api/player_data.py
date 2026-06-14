@@ -6,6 +6,37 @@ from typing import Optional
 
 logger = logging.getLogger("EasyBot")
 
+
+def parse_minecraft_json(text: str) -> Optional[dict]:
+    """
+    解析 Minecraft NBT 格式的数据并转换为 JSON
+    例如: "Alex has the following entity data: {a: 0b, big: 2.99E7, ...}"
+    返回: {"a": 0, "big": 2.99E7, ...}
+    """
+    try:
+        import hjson
+        import collections
+
+        # 移除命令结果前缀
+        text = re.sub(r'^[^ ]* has the following entity data: ', '', text)
+
+        # 移除数字后的字母后缀 (0b -> 0, 300s -> 300, etc.)
+        text = re.sub(r'(([{\[:,]|^) *[+-]?\d+(\.\d*?)?(E[+-]?\d+)?)([bsLdf])', r'\1', text)
+
+        # 移除数组头 ([I; -> [)
+        text = re.sub(r'(?<=\[)[IL];', '', text)
+
+        # 移除折叠标记 (<...> -> "")
+        text = re.sub(r'<\.\.\.>', '', text)
+
+        value = hjson.loads(text)
+        if isinstance(value, collections.OrderedDict):
+            return dict(value)
+        return value
+    except Exception as e:
+        logger.error(f"解析 Minecraft JSON 失败: {e}")
+        return None
+
 NBT_DATA_TYPE_MAP = {
     0: "playerdata",   # PlayerData
     1: "advancements",  # Advancements
@@ -108,29 +139,10 @@ class PlayerDataGetter:
                         f"data get entity {player_name}"
                     )
                     if result and "has the following entity data" in result:
-                        # 解析原始数据，提取 Inventory 部分
-                        raw_data = result.split("has the following entity data: ", 1)
-                        if len(raw_data) > 1:
-                            entity_data_str = raw_data[1]
-                            # 提取 Inventory 部分
-                            import re
-                            inventory_match = re.search(
-                                r'Inventory: \[(.*?)\]',
-                                entity_data_str,
-                                re.DOTALL
-                            )
-                            if inventory_match:
-                                inventory_str = inventory_match.group(1)
-                                # 解析物品列表
-                                inventory = self._parse_inventory_items(inventory_str)
-                                return {
-                                    "raw": result,
-                                    "parsed": {
-                                        "Inventory": inventory
-                                    },
-                                    "inventory": inventory
-                                }
-                        return {"raw": result}
+                        # 使用 MinecraftJsonParser 解析 NBT 数据
+                        parsed_data = parse_minecraft_json(result)
+                        if parsed_data:
+                            return {"parsed": parsed_data}
                 except Exception as e:
                     logger.error(f"读取玩家背包数据失败: {e}")
                     pass
@@ -142,7 +154,10 @@ class PlayerDataGetter:
                     f"data get storage minecraft:player_data {player_uuid}.advancements"
                 )
                 if result:
-                    return {"raw": result}
+                    # 使用 MinecraftJsonParser 解析数据
+                    parsed_data = parse_minecraft_json(result)
+                    if parsed_data:
+                        return {"parsed": parsed_data}
             except Exception:
                 pass
             return None
@@ -153,50 +168,15 @@ class PlayerDataGetter:
                     f"data get storage minecraft:player_data {player_uuid}.stats"
                 )
                 if result:
-                    return {"raw": result}
+                    # 使用 MinecraftJsonParser 解析数据
+                    parsed_data = parse_minecraft_json(result)
+                    if parsed_data:
+                        return {"parsed": parsed_data}
             except Exception:
                 pass
             return None
 
         return None
-
-    def _parse_inventory_items(self, inventory_str: str) -> list:
-        """解析 Minecraft NBT 格式的物品列表"""
-        items = []
-        if not inventory_str:
-            return items
-
-        # 匹配每个物品: {count: 64, Slot: 0b, id: "minecraft:oak_planks"}
-        import re
-        item_pattern = re.compile(r'\{([^}]+)\}')
-        for match in item_pattern.finditer(inventory_str):
-            item_str = match.group(1)
-            item = {}
-
-            # 解析 count
-            count_match = re.search(r'count:\s*(\d+)', item_str)
-            if count_match:
-                item['count'] = int(count_match.group(1))
-
-            # 解析 Slot
-            slot_match = re.search(r'Slot:\s*(\d+)b?', item_str)
-            if slot_match:
-                item['slot'] = int(slot_match.group(1))
-
-            # 解析 id
-            id_match = re.search(r'id:\s*"([^"]+)"', item_str)
-            if id_match:
-                item['id'] = id_match.group(1)
-
-            # 解析 tag (如果有)
-            tag_match = re.search(r'tag:\s*\{([^}]+)\}', item_str)
-            if tag_match:
-                item['tag'] = tag_match.group(1)
-
-            if item:
-                items.append(item)
-
-        return items
 
     def get_entity_data(self, player: str, path: str = "", timeout: float = 5.0) -> Optional[dict]:
         raw = self.get_player_info(player, path, timeout)
