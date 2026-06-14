@@ -55,6 +55,9 @@ async def on_player_joined(server: PluginServerInterface, player: str, info: Inf
         # 检查 RCON 配置并提示管理员
         notify_rcon_not_configured(server, player)
 
+        # 检查编码配置是否需要重启生效
+        notify_encoding_config_reload(server, player)
+
     except Exception as e:
         server.logger.error(f"处理玩家 {player} 加入时出错: {e}")
         import traceback
@@ -251,5 +254,32 @@ def notify_rcon_not_configured(server: PluginServerInterface, player: str):
             server.tell(player, "§e[EasyBot] §cRCON 未配置! 命令执行、玩家皮肤获取等功能受限。")
             server.tell(player, "§e[EasyBot] 使用 §b!!ez rcon auto §e自动配置RCON")
             _rcon_notify_cooldown[player] = now
+    except Exception:
+        pass
+
+
+# 编码配置重载提示冷却: {player: last_notify_time}
+_encoding_notify_cooldown = {}
+_ENCODING_NOTIFY_INTERVAL = 300  # 5分钟内不重复提示同一玩家
+
+
+def notify_encoding_config_reload(server: PluginServerInterface, player: str):
+    """当编码配置被修改时，在游戏内提示管理员执行 reload"""
+    # 检查是否有编码配置需要重载
+    if not getattr(server, '_easybot_encoding_fixed', False):
+        return
+
+    now = time.time()
+    last = _encoding_notify_cooldown.get(player, 0)
+    if now - last < _ENCODING_NOTIFY_INTERVAL:
+        return
+
+    # 只通知权限等级 >= 2 的玩家（管理员）
+    try:
+        perm_level = server.get_permission_level(player)
+        if perm_level >= 2:
+            server.tell(player, "§e[EasyBot] §c已自动修改编码配置来防止可能出现的乱码情况。")
+            server.tell(player, "§e[EasyBot] 请执行 §b!!MCDR reload config §e使配置生效")
+            _encoding_notify_cooldown[player] = now
     except Exception:
         pass

@@ -64,15 +64,75 @@ def is_bot_player(player: str) -> bool:
     return any(player.startswith(prefix) for prefix in prefixes)
 
 
+def fix_mcdr_encoding(server: PluginServerInterface):
+    """检查并修复 MCDR 的编码配置，确保能正确处理中文"""
+    try:
+        import os
+        config_path = os.path.join(os.getcwd(), "config.yml")
+
+        if not os.path.exists(config_path):
+            server.logger.debug("未找到 MCDR config.yml，跳过编码检查")
+            return
+
+        with open(config_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # 检查 decoding 配置
+        # 期望格式: decoding: ['utf8', 'gbk']
+        lines = content.split("\n")
+        modified = False
+        new_lines = []
+
+        for line in lines:
+            stripped = line.strip()
+            # 匹配 decoding: utf8 或 decoding: "utf8" 等格式
+            if stripped.startswith("decoding:") and "gbk" not in stripped:
+                # 检查是否是单个值（不是列表）
+                value = stripped.split(":", 1)[1].strip()
+                if value.startswith("["):
+                    # 已经是列表格式，但没有 gbk
+                    if "gbk" not in value:
+                        # 在列表中添加 gbk
+                        value = value.rstrip("]").rstrip()
+                        new_line = line.replace(stripped, f"decoding: {value}, 'gbk']")
+                        new_lines.append(new_line)
+                        modified = True
+                        server.logger.info(f"已修复 MCDR decoding 配置: 添加 gbk 支持")
+                        continue
+                else:
+                    # 单个值格式，改为列表
+                    new_line = line.replace(stripped, f"decoding: ['utf8', 'gbk']")
+                    new_lines.append(new_line)
+                    modified = True
+                    server.logger.info(f"已修复 MCDR decoding 配置: {value} -> ['utf8', 'gbk']")
+                    continue
+            new_lines.append(line)
+
+        if modified:
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(new_lines))
+            server.logger.info("MCDR 编码配置已修复")
+            # 设置标志，以便在命令注册后执行 reload
+            server._easybot_encoding_fixed = True
+        else:
+            server.logger.debug("MCDR decoding 配置正常，无需修改")
+
+    except Exception as e:
+        server.logger.warning(f"检查 MCDR 编码配置时出错: {e}")
+
+
 async def on_load(server: PluginServerInterface, prev_module):
     """插件加载时执行的函数"""
     global server_interface, wsc
     server_interface = server
     server.logger.info("开始加载EasyBot插件...")
-    
+
     try:
         # 加载配置
         load_config(server)
+
+        # 检查并修复 MCDR 的编码配置
+        fix_mcdr_encoding(server)
 
         # 初始化 behavior_impl (PlayerDataGetter 等)
         from easybot_mcdr import behavior_impl
@@ -104,10 +164,14 @@ async def on_load(server: PluginServerInterface, prev_module):
         
         # 注册事件监听器
         register_event_listeners(server)
-        
+
         # 注册命令
         register_commands(server)
-        
+
+        # 如果编码配置被修改，提示用户手动执行
+        if getattr(server, '_easybot_encoding_fixed', False):
+            server.logger.info("编码配置已修改，请手动执行 !!MCDR reload config 使配置生效")
+
         # 检查 RCON 配置
         if not server.is_rcon_running():
             from easybot_mcdr.rcon_config import check_rcon_config
